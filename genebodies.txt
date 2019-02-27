@@ -1,0 +1,4 @@
+# Format: gene,chromosome_name,start_position,end_position
+GAL1,tpg|BK006936.2|,279021,280607
+GAL7,tpg|BK006936.2|,274427,275527
+GAL10,tpg|BK006936.2|,276253,278352

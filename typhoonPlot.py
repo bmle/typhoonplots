@@ -6,67 +6,44 @@ Author: bmle
 
 Makes typhoon plots from sequence alignment data. Based off an R script that also creates typhoon plots.
 
-Produces a single file containing one or more typhoon plots at the specified genomic coordinates.
-
 """
 
 import argparse
-import numpy as np
 import pysam
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-
+import plotUtils
 
 def main(chr_name, origin, offset, out, files, condensed = False):
+	"""
+	Create a typhoon plot of reads (using template length)
+	:param chr_name: Name of the chromosome (as stated in the BAM/SAM file)
+	:param origin: Genomic location to start capturing from
+	:param offset: How many bases (on either side of `origin`) to capture
+	:param out: Name of outputted file
+	:param files: BAM/SAM files to analyze
+	:param condensed: Whether the plot should be visually condensed or not (optional)
+	:return: A file at `out` containing one or more typhoon plots at the specified genomic coordinates
+	"""
 
-	# =========================================================================
-	# Calculate read overlaps for each genomic position, using each read's
-	# template length
-	# =========================================================================
 	print("Calculating overlaps...")
 
 	# Make matrix to store overlaps, an entry for each file,
 	# and a row for each read length and a column for each nucleosomal position
+	data = []
 	start = origin - offset
 	end = origin + offset
-	data = []
-
 	max_len = 250	# Maximum length of read to capture (250 should capture everything)
 
 	# Iterate over all data files
 	for file in files:
 
 		# Load each file and filter for region of interest
-		# noinspection PyUnresolvedReferences
-		tempf = pysam.AlignmentFile(file, "rb")
-		f = tempf.fetch(chr_name, start, end)
+		temp_reads = pysam.AlignmentFile(file, "rb")
+		reads = temp_reads.fetch(chr_name, start, end)
 
-		# Create temporary array to store alignment data
-		temp = np.zeros((max_len + 1, end - start + 1))
-
-		# Loop over all reads in file
-		for r in f:
-
-			# Calculates read width based on template length
-			r_len = r.template_length
-
-			# Shrinks template length (was present in the original R script)
-			# Appears to make the bars in the plot shorter in width
-			offset_start = round(r_len/5)   # default: 0
-			offset_end = offset_start * 3   # default: 0
-
-			# Calculate adjusted start and stop positions
-			r_start = r.reference_start + offset_start
-			r_end = min(r_start + offset_end, end)  # min() prevents reads from extending past the region of interest
-
-			# Adds read positions to temporary array
-			for i in range(r_start, r_end + 1):
-				# temp[r_len][i - start] += 1
-				cur_val = temp[r_len][i - start]
-				temp[r_len][i - start] = min(cur_val + 1, 15)   # Cap all values at 15 so plot has higher contrast
-
-		# Append temp array to the list of all overlaps
-		data.append(temp)
+		# Convert reads to template lengths, and append to list of all overlaps
+		temp_array = plotUtils.calculate_reads(reads, start, end, max_len)
+		data.append(temp_array)
 
 	print("Finished calculating overlaps!")
 
@@ -76,14 +53,8 @@ def main(chr_name, origin, offset, out, files, condensed = False):
 	# =========================================================================
 	print("Generating plot...")
 
-	# Make the color scheme
-	colordict = {"red":   ((0, 1, 1),
-	                       (1, 0, 0)),
-	             "green": ((0, 1, 1),
-	                       (1, 0, 0)),
-	             "blue":  ((0, 1, 1),
-	                       (1, 1, 1))}
-	my_map = LinearSegmentedColormap("mymap", colordict)
+	# Make the color scheme for the plot
+	my_map = plotUtils.cmap()
 
 	# Make the heatmap
 	h = 2 if condensed else 6
@@ -97,6 +68,9 @@ def main(chr_name, origin, offset, out, files, condensed = False):
 
 		# Flip plot vertically so that higher read lengths are towards the top
 		ax.invert_yaxis()
+
+		# Annotate gene bodies
+		ax = plotUtils.make_gene_bodies(ax)
 
 		# Set labels
 		if not condensed:

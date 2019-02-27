@@ -7,21 +7,30 @@ Author: bmle
 Makes typhoon plots from sequence alignment data, based on how many windows are specified.
 Based off an R script that also creates typhoon plots.
 
-Adjust the parameters in the execution section, then run the script to produce
+produce
 one or more files containing typhoon plots at the specified genomic windows.
 
 """
 
 import argparse
-import numpy as np
 import pysam
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 import math
+import plotUtils
 
 
 def main(chr_name, origin, extent, limit, out, file):
-	# noinspection PyUnresolvedReferences
+	"""
+	Create one or more typhoon plots of reads (using template length)
+	:param chr_name: Name of the chromosome (as stated in the BAM/SAM file)
+	:param origin: Genomic location to start capturing from
+	:param extent: How wide each window should be
+	:param limit: How many bases in total to capture (starting from `origin`)
+	:param out: Name of outputted file
+	:param file: A single BAM/SAM file to analyze
+	:return:
+	"""
+
 	f = pysam.AlignmentFile(file, "rb")  # Load data file
 
 	# Calculate genomic regions to search in, each region having a width of "extent"
@@ -36,13 +45,7 @@ def main(chr_name, origin, extent, limit, out, file):
 	max_len = 250	# Maximum length of read to capture (250 should capture everything)
 
 	# Make the color scheme for the plot
-	colordict = {"red": ((0, 1, 1),
-	                     (1, 0, 0)),
-	             "green": ((0, 1, 1),
-	                       (1, 0, 0)),
-	             "blue": ((0, 1, 1),
-	                      (1, 1, 1))}
-	my_map = LinearSegmentedColormap("mymap", colordict)
+	my_map = plotUtils.cmap()
 
 	# =========================================================================
 
@@ -53,50 +56,24 @@ def main(chr_name, origin, extent, limit, out, file):
 	# Loop over all files
 	for x, plot in enumerate(plots, start=1):
 
-		# =========================================================================
-		# Calculates read overlaps for each genomic window, using each read's
-		# template length
-		# =========================================================================
+		# =====================================================================
+		# Calculates read overlaps for each genomic window, using each read's template length
+		# =====================================================================
 		print("Calculating overlaps for file " + str(x) + " of " + str(len(plots)) + "...")
 
 		data = []  # List to store overlaps
 
-		# Loop over all regions in each file
+		# Loop over all regions in each file, convert reads to template lengths
 		for y, region in enumerate(plot, start=1):
 			print("\tCalculating overlaps for region " + str((n*(x-1))+y) + " of " + str(num_plots) + "...")
 
-			# Create temporary array to store alignment data
-			temp = np.zeros((max_len + 1, region[1] - region[0] + 1))
+			reg_reads = f.fetch(chr_name, region[0], region[1])  # Filter for region of interest
+			temp_array = plotUtils.calculate_reads(reg_reads, region[0], region[1], max_len)
+			data.append(temp_array)
 
-			# Filter for region of interest
-			reg_reads = f.fetch(chr_name, region[0], region[1])
-
-			# Loop over all reads
-			for read in reg_reads:
-
-				# Calculates read width based on template length
-				r_len = read.template_length
-
-				# Shrinks template length (was present in the original R script)
-				# Appears to make the bars in the plot shorter in width
-				offset_start = round(r_len/5)   # default: 0
-				offset_end = offset_start * 3   # default: 0
-
-				# Calculate proper start and stop positions
-				r_start = read.reference_start + offset_start
-				r_end = min(r_start + offset_end, region[1])  # min() prevents reads from extending past the region of interest
-
-				# Adds read positions to temporary array
-				for z in range(r_start, r_end + 1):
-					cur_val = temp[r_len][z - region[0]]
-					temp[r_len][z - region[0]] = min(cur_val + 1, 30)   # Cap all values at 30 so plot is displayed correctly
-
-			# Append temp array to the list of all overlaps
-			data.append(temp)
-
-		# =========================================================================
+		# =====================================================================
 		# Makes a "typhoon" plot from alignment data
-		# =========================================================================
+		# =====================================================================
 		print("Generating plots for file " + str(x) + "...")
 
 		# Make the heatmap
@@ -110,13 +87,16 @@ def main(chr_name, origin, extent, limit, out, file):
 			# Flip plot vertically so that higher read lengths are towards the top
 			ax.invert_yaxis()
 
+			# Annotate gene bodies
+			ax = plotUtils.make_gene_bodies(ax)
+
 			# Set labels
 			ax.set_ylabel("Fragment Length (bp)")
 			ax.set_xlabel(" Position from " + chr_name + ":" + str(region[0]))
 
 		# Save the plot
 		plt.tight_layout()
-		plt.savefig(out + "_" + str(x) + ".png")
+		plt.savefig(out + "_" + str(x) + ".png", dpi=300)
 		plt.close()
 		print("Plot " + str(x) + " of " + str(len(plots)) + " created!")
 
