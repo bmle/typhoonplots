@@ -42,10 +42,9 @@ def calculate_reads(reads, start, end, max_len):
 
         # Adds read positions to temporary array
         for i in range(r_start, r_end + 1):
-            cur_val = temp[r_len][i - start]
-            temp[r_len][i - start] = min(cur_val + 1, 15)  # Cap all values at 15 so the plot has higher contrast
-            # temp[r_len][i - start] += 1   # Can use direct counting if contrast doesn't matter
+            temp[r_len][i - start] += 1
 
+    temp[temp > 15] = 15  # Cap all values at 15 so the plot has higher contrast
     return temp
 
 
